@@ -30,6 +30,7 @@ MODULE mdsys
   INTEGER :: natoms,nfi,nsteps,nthreads
   REAL(kind=dbl) dt, mass, epsilon, sigma, box, rcut
   REAL(kind=dbl) ekin, epot, temp
+  REAL(kind=dbl) temp_int   ! modified by H.-L. T. LE 
   REAL(kind=dbl), POINTER, DIMENSION (:,:) :: pos, vel
   REAL(kind=dbl), POINTER, DIMENSION (:,:,:) :: frc
 END MODULE mdsys
@@ -380,6 +381,28 @@ SUBROUTINE velverlet
 END SUBROUTINE velverlet
 
 
+ ! Velocity scaling added by H.-L. T. LE 
+SUBROUTINE velrescale
+USE mdsys
+
+  REAL(kind=dbl):: delta_temp, lambda
+ 
+  CALL velverlet
+  CALL getekin
+  delta_temp = abs(temp - temp_int)
+
+  if (delta_temp .GT. 10) then
+      lambda = sqrt(temp_int/temp)
+  else
+      lambda = 1.0
+  endif
+ 
+  vel(:,:) = lambda*vel(:,:)
+
+END SUBROUTINE velrescale
+
+
+
 PROGRAM LJMD
   USE kinds
   USE io
@@ -412,6 +435,7 @@ PROGRAM LJMD
   READ(stdin,*) nsteps
   READ(stdin,*) dt
   READ(stdin,*) nprint
+  READ(stdin,*) temp_int    ! modified by H.-L. T. LE  
 
   ! allocate storage for simulation data.
   ALLOCATE(pos(natoms,3),vel(natoms,3),frc(natoms,3,nthreads))
@@ -453,8 +477,9 @@ PROGRAM LJMD
 
      ! propagate system and recompute energies
      CALL updcell
-     CALL velverlet
-     CALL getekin
+!     CALL velverlet
+     CALL velrescale  
+    CALL getekin
   END DO
 
   ! clean up: close files, free memory
