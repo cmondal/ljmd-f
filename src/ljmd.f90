@@ -29,8 +29,9 @@ MODULE mdsys
   IMPLICIT NONE
   INTEGER :: natoms,nfi,nsteps,nthreads
   REAL(kind=dbl) dt, mass, epsilon, sigma, box, rcut
-  REAL(kind=dbl) ekin, epot, temp
+  INTEGER :: thermostat     ! modified by H.-L. T. LE 
   REAL(kind=dbl) temp_int   ! modified by H.-L. T. LE 
+  REAL(kind=dbl) ekin, epot, temp
   REAL(kind=dbl), POINTER, DIMENSION (:,:) :: pos, vel
   REAL(kind=dbl), POINTER, DIMENSION (:,:,:) :: frc
 END MODULE mdsys
@@ -435,7 +436,8 @@ PROGRAM LJMD
   READ(stdin,*) nsteps
   READ(stdin,*) dt
   READ(stdin,*) nprint
-  READ(stdin,*) temp_int    ! modified by H.-L. T. LE  
+  READ(stdin,*) thermostat                             ! modified by H.-L. T. LE  
+  if (thermostat.eq.1) READ(stdin,*) temp_int          ! modified by H.-L. T. LE  
 
   ! allocate storage for simulation data.
   ALLOCATE(pos(natoms,3),vel(natoms,3),frc(natoms,3,nthreads))
@@ -476,9 +478,9 @@ PROGRAM LJMD
      END IF
 
      ! propagate system and recompute energies
-     CALL updcell
-!     CALL velverlet
-     CALL velrescale  
+    CALL updcell
+    if (thermostat.eq.0) CALL velverlet !modified by H.-L. T. LE
+    if (thermostat.eq.1) CALL velrescale !modified by H.-L. T. LE 
     CALL getekin
   END DO
 
