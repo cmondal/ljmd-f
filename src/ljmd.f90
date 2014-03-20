@@ -28,7 +28,9 @@ MODULE mdsys
   USE kinds
   IMPLICIT NONE
   INTEGER :: natoms,nfi,nsteps,nthreads
+  INTEGER :: npot
   REAL(kind=dbl) dt, mass, epsilon, sigma, box, rcut
+  REAL(kind=dbl) re, alpha, de
   REAL(kind=dbl) ekin, epot, temp
   REAL(kind=dbl), POINTER, DIMENSION (:,:) :: pos, vel
   REAL(kind=dbl), POINTER, DIMENSION (:,:,:) :: frc
@@ -244,7 +246,20 @@ SUBROUTINE getekin
 END SUBROUTINE getekin
 
 ! compute forces 
-SUBROUTINE force
+Subroutine force 
+ USE kinds
+ USE utils
+ USE mdsys
+ USE cell
+ IMPLICIT NONE
+ 
+ if (npot .eq.1) call force_lj
+ if (npot .eq.2) call force_morse
+
+End subroutine force
+
+
+SUBROUTINE force_lj
   USE kinds
   USE utils
   USE mdsys
@@ -354,8 +369,128 @@ SUBROUTINE force
      END DO
   END IF
   !$OMP END PARALLEL
-END SUBROUTINE force
+END SUBROUTINE force_lj
 
+
+
+SUBROUTINE force_morse
+  USE kinds
+  USE utils
+  USE mdsys
+  USE cell
+  IMPLICIT NONE
+
+  REAL(kind=dbl) :: rsq, rcutsq, rinv, pos1(3), delta(3)!,alpha,de, !re, alpha,& de const
+  REAL(kind=dbl) :: boxby2 , dealpha, rij,ffac,expcoff!, c12, c6, r6
+  INTEGER :: i, j, k, n, m, ii, jj, kk, tid, fromidx, toidx
+  INTEGER, EXTERNAL :: omp_get_thread_num
+
+epot=0.0_dbl
+
+  !$OMP parallel default(SHARED) reduction(+:epot)              &
+  !$OMP private(i,j,k,n,m,ii,jj,kk,tid,fromidx,toidx)           &
+  !$OMP private(boxby2,c12,c6,r6,ffac,rsq,rcutsq,rinv,pos1,delta)
+  tid = 0
+ ! re=1.2
+  !de= 0.176
+  !alpha= 1.4
+  !$ tid = omp_get_thread_num() 
+  tid = tid + 1
+  frc(:,:,tid) = 0.0_dbl
+  dealpha = de*(alpha**2)
+  ! precompute some constants
+  boxby2=0.5_dbl*box
+  rcutsq=re*re
+  !rcutsq=rcut*rcut
+
+ ! c12 = 4.0_dbl*epsilon*sigma**12
+!  c6  = 4.0_dbl*epsilon*sigma**6
+
+  ! first compute per cell self-interactions
+  DO kk=0, ncell-1, nthreads
+     i = kk + tid
+     IF (i > ncell) EXIT
+
+     DO j=1,npercell(i)-1
+        ii = clist(i,j)
+        pos1 = pos(ii,:)
+
+        DO k=j+1,npercell(i)
+           jj = clist(i,k)
+           delta(1)=pbc(pos1(1)-pos(jj,1), boxby2, box)
+           delta(2)=pbc(pos1(2)-pos(jj,2), boxby2, box)
+           delta(3)=pbc(pos1(3)-pos(jj,3), boxby2, box)
+           rsq = dot_product(delta,delta)
+           rij=sqrt(rsq)
+           ! compute force and energy if within cutoff */
+           IF (rij > 0.0) THEN
+		 expcoff= -alpha*(rij-re)
+              rinv = 2*dealpha*(1.0_dbl/rij)
+              !r6 = rinv*rinv*rinv
+              ffac = (exp(expcoff)-exp(2*expcoff))
+              epot = epot + de*(exp(2*expcoff)-2*exp(expcoff))
+
+              frc(ii,:,tid) = frc(ii,:,tid) + delta*ffac*rinv
+              frc(jj,:,tid) = frc(jj,:,tid) - delta*ffac*rinv
+             END IF
+        END DO
+     END DO
+  END DO
+
+  ! now compute per cell-cell interactions from pair list
+  DO kk=0, npair-1, nthreads
+     n = kk + tid
+     IF (n > npair) EXIT
+        
+     i = plist(2*n-1)
+     m = plist(2*n)
+     DO j=1,npercell(i)
+        ii = clist(i,j)
+        pos1 = pos(ii,:)
+
+        DO k=1,npercell(m)
+           jj = clist(m,k)
+           delta(1)=pbc(pos1(1)-pos(jj,1), boxby2, box)
+           delta(2)=pbc(pos1(2)-pos(jj,2), boxby2, box)
+           delta(3)=pbc(pos1(3)-pos(jj,3), boxby2, box)
+           rsq = dot_product(delta,delta)
+      
+           ! compute force and energy if within cutoff */
+          IF (rij > 0.0) THEN
+		 expcoff= -alpha*(rij-re)
+              rinv = 2*dealpha*(1.0_dbl/rij)
+              !r6 = rinv*rinv*rinv
+              ffac = (exp(expcoff)-exp(2*expcoff))
+              epot = epot + de*(exp(2*expcoff)-2*exp(expcoff))
+
+              frc(ii,:,tid) = frc(ii,:,tid) + delta*ffac*rinv
+              frc(jj,:,tid) = frc(jj,:,tid) - delta*ffac*rinv
+           END IF
+        END DO
+     END DO
+  END DO
+  ! before reducing the forces, we have to make sure 
+  ! that all threads are done adding to them.
+  !$OMP barrier
+
+  IF (nthreads > 1) THEN
+     ! set equal chunks of index ranges
+     i = 1 + (natoms/nthreads)
+     fromidx = (tid-1)*i + 1
+     toidx = fromidx + i - 1
+     IF (toidx > natoms) toidx = natoms
+
+     ! now reduce forces from threads with tid > 1 into
+     ! the storage of the first thread. since we have
+     ! threads already spawned, we do this in parallel.
+     DO i=2,nthreads
+        DO j=fromidx,toidx
+           frc(j,:,1) = frc(j,:,1) + frc(j,:,i)
+        END DO
+     END DO
+  END IF
+  !$OMP END PARALLEL
+END SUBROUTINE force_morse
 
 ! velocity verlet
 SUBROUTINE velverlet
@@ -402,9 +537,13 @@ PROGRAM LJMD
 
   READ(stdin,*) natoms
   READ(stdin,*) mass
+  READ(stdin,*) npot
   READ(stdin,*) epsilon
   READ(stdin,*) sigma
-  READ(stdin,*) rcut
+  READ(stdin,*) rcut   
+  READ(stdin,*) re
+  READ(stdin,*) de
+  READ(stdin,*) alpha
   READ(stdin,*) box
   CALL getline(stdin,restfile)
   CALL getline(stdin,trajfile)
@@ -412,7 +551,7 @@ PROGRAM LJMD
   READ(stdin,*) nsteps
   READ(stdin,*) dt
   READ(stdin,*) nprint
-
+  
   ! allocate storage for simulation data.
   ALLOCATE(pos(natoms,3),vel(natoms,3),frc(natoms,3,nthreads))
 
@@ -434,6 +573,7 @@ PROGRAM LJMD
   ! initialize forces and energies
   nfi=0
   frc(:,:,:) = 0.0_dbl
+  
   CALL force
   CALL getekin
     
