@@ -29,6 +29,8 @@ MODULE mdsys
   IMPLICIT NONE
   INTEGER :: natoms,nfi,nsteps,nthreads,NUnitCell,Maxatoms
   REAL(kind=dbl) dt, mass, epsilon, sigma, box, rcut
+  INTEGER :: thermostat     ! modified by H.-L. T. LE 
+  REAL(kind=dbl) temp_int   ! modified by H.-L. T. LE 
   REAL(kind=dbl) ekin, epot, temp
   REAL(kind=dbl), POINTER, DIMENSION (:,:) :: pos, vel
   REAL(kind=dbl), POINTER, DIMENSION (:,:,:) :: frc
@@ -382,7 +384,6 @@ SUBROUTINE velverlet
   vel(:,:) = vel(:,:) + vfac*frc(:,:,1) 
 END SUBROUTINE velverlet
 
-
 Subroutine fcc
 !  USE kinds
   USE mdsys!, ONLY: natoms, mass, temp, ekin, vel
@@ -559,6 +560,26 @@ END subroutine fcc
         ran3=mj*FAC
   END FUNCTION ran3
 
+ ! Velocity scaling added by H.-L. T. LE 
+SUBROUTINE velrescale
+USE mdsys
+
+  REAL(kind=dbl):: delta_temp, lambda
+ 
+  CALL velverlet
+  CALL getekin
+  delta_temp = abs(temp - temp_int)
+
+  if (delta_temp .GT. 10) then
+      lambda = sqrt(temp_int/temp)
+  else
+      lambda = 1.0
+  endif
+ 
+  vel(:,:) = lambda*vel(:,:)
+
+END SUBROUTINE velrescale
+
 PROGRAM LJMD
   USE kinds
   USE io
@@ -596,6 +617,8 @@ PROGRAM LJMD
   READ(stdin,*) nsteps
   READ(stdin,*) dt
   READ(stdin,*) nprint
+  READ(stdin,*) thermostat                             ! modified by H.-L. T. LE  
+  if (thermostat.eq.1) READ(stdin,*) temp_int          ! modified by H.-L. T. LE  
 
   boxby2=0.5_dbl*box
   Maxatoms = 4*NUnitCell*NUnitCell*NUnitCell
@@ -650,13 +673,16 @@ PROGRAM LJMD
 
      ! propagate system and recompute energies
      CALL updcell
-     CALL velverlet
-     Do i = 1, natoms
-       pos(i,1) = pbc(pos(i,1), boxby2, box)
-       pos(i,2) = pbc(pos(i,2), boxby2, box)
-       pos(i,3) = pbc(pos(i,3), boxby2, box)
-     Enddo
-     CALL getekin
+!     CALL velverlet
+!     Do i = 1, natoms
+!       pos(i,1) = pbc(pos(i,1), boxby2, box)
+!       pos(i,2) = pbc(pos(i,2), boxby2, box)
+!       pos(i,3) = pbc(pos(i,3), boxby2, box)
+!     Enddo
+!    CALL updcell
+    if (thermostat.eq.0) CALL velverlet !modified by H.-L. T. LE
+    if (thermostat.eq.1) CALL velrescale !modified by H.-L. T. LE 
+    CALL getekin
   END DO
 
   ! clean up: close files, free memory

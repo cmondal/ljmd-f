@@ -10,4 +10,5 @@ argon_108.dat     # energies
 10000             # nr MD steps
 5.0               # MD time step (in fs)
 100               # output print frequency
+1
 300               
