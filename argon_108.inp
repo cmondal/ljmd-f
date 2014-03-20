@@ -1,12 +1,17 @@
 3                 # nunitcell
 39.948            # mass in AMU
+1                 # npot to verify potentials
 0.2379            # epsilon in kcal/mol
 3.405             # sigma in angstrom
 8.5               # rcut in angstrom
+1.4		   #re
+0.176		   # de
+1.4		   #   alpha
 argon_108.xyz     # trajectory
 argon_108.dat     # energies
-10000                # nr MD steps
+10000             # nr MD steps
 5.0               # MD time step (in fs)
-100                 # output print frequency
+100               # output print frequency
 1                 # index for the thermostat
 300               # temp_int
+
