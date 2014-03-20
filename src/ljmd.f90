@@ -394,12 +394,12 @@ Subroutine fcc
   Double Precision :: a,bby2,cby2,CMx,CMy,CMz
   Double Precision :: Momentumx,Momentumy,Momentumz
   Real(8) :: random, Ke0
-  Real gasdev,ran3
+  Real gasdev
 
 
-   a = 4.7193d0
-   bby2 = 0.5d0*4.7193d0
-   cby2 = 0.5d0*4.7193d0
+   a = 5.7193d0
+   bby2 = 0.5d0*5.7193d0
+   cby2 = 0.5d0*5.7193d0
    Box = Dble(NUnitCell)*a
    Natoms = NUnitCell*NUnitCell*NUnitCell*4
    Write(*,*)"No of atoms", Natoms
@@ -562,7 +562,10 @@ END subroutine fcc
 
  ! Velocity scaling added by H.-L. T. LE 
 SUBROUTINE velrescale
-USE mdsys
+!USE mdsys
+  USE kinds
+  USE mdsys
+  USE physconst
 
   REAL(kind=dbl):: delta_temp, lambda
  
@@ -570,10 +573,10 @@ USE mdsys
   CALL getekin
   delta_temp = abs(temp - temp_int)
 
-  if (delta_temp .GT. 10) then
+  if (delta_temp .GT. 10.0_dbl) then
       lambda = sqrt(temp_int/temp)
   else
-      lambda = 1.0
+      lambda = 1.0_dbl
   endif
  
   vel(:,:) = lambda*vel(:,:)
@@ -620,6 +623,7 @@ PROGRAM LJMD
   READ(stdin,*) thermostat                             ! modified by H.-L. T. LE  
   if (thermostat.eq.1) READ(stdin,*) temp_int          ! modified by H.-L. T. LE  
 
+  write(*,*)"thermostat,tmp_int", thermostat, temp_int
   boxby2=0.5_dbl*box
   Maxatoms = 4*NUnitCell*NUnitCell*NUnitCell
   ! allocate storage for simulation data.
@@ -673,13 +677,6 @@ PROGRAM LJMD
 
      ! propagate system and recompute energies
      CALL updcell
-!     CALL velverlet
-!     Do i = 1, natoms
-!       pos(i,1) = pbc(pos(i,1), boxby2, box)
-!       pos(i,2) = pbc(pos(i,2), boxby2, box)
-!       pos(i,3) = pbc(pos(i,3), boxby2, box)
-!     Enddo
-!    CALL updcell
     if (thermostat.eq.0) CALL velverlet !modified by H.-L. T. LE
     if (thermostat.eq.1) CALL velrescale !modified by H.-L. T. LE 
     CALL getekin
