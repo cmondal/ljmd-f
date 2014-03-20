@@ -27,12 +27,9 @@ END MODULE physconst
 MODULE mdsys
   USE kinds
   IMPLICIT NONE
-
-  INTEGER :: natoms,nfi,nsteps,nthreads,NUnitCell,Maxatoms
-  REAL(kind=dbl) dt, mass, epsilon, sigma, box, rcut
-  INTEGER :: thermostat     ! modified by H.-L. T. LE 
-  REAL(kind=dbl) temp_int   ! modified by H.-L. T. LE 
+  INTEGER :: natoms,nfi,nsteps,nthreads
   INTEGER :: npot
+  REAL(kind=dbl) dt, mass, epsilon, sigma, box, rcut
   REAL(kind=dbl) re, alpha, de
   REAL(kind=dbl) ekin, epot, temp
   REAL(kind=dbl), POINTER, DIMENSION (:,:) :: pos, vel
@@ -61,7 +58,6 @@ CONTAINS
        pbc = pbc + box
     END DO
   END FUNCTION pbc
-
 END MODULE utils
 
 MODULE io
@@ -142,7 +138,6 @@ CONTAINS
     ncell   = ngrid * ngrid * ngrid
     dcell   = box / ngrid
     boxby2  = 0.5_dbl * box
-    Write(*,*)"Box, boxby2",box,boxby2
     boxoffs = boxby2 - 0.5_dbl*dcell
     nidx = 2*natoms / ncell + 2
     nidx = ((nidx/2) + 1) * 2
@@ -310,7 +305,6 @@ SUBROUTINE force_lj
       
            ! compute force and energy if within cutoff */
            IF (rsq < rcutsq) THEN
-!           Write(*,*)"rsq<rcutsq"
               rinv = 1.0_dbl/rsq
               r6 = rinv*rinv*rinv
               ffac = (12.0_dbl*c12*r6 - 6.0_dbl*c6)*r6*rinv
@@ -406,8 +400,8 @@ epot=0.0_dbl
   dealpha = de*(alpha**2)
   ! precompute some constants
   boxby2=0.5_dbl*box
-!  rcutsq=re*re
-  rcutsq=rcut*rcut
+  rcutsq=re*re
+  !rcutsq=rcut*rcut
 
  ! c12 = 4.0_dbl*epsilon*sigma**12
 !  c6  = 4.0_dbl*epsilon*sigma**6
@@ -520,204 +514,6 @@ SUBROUTINE velverlet
   vel(:,:) = vel(:,:) + vfac*frc(:,:,1) 
 END SUBROUTINE velverlet
 
-Subroutine fcc
-!  USE kinds
-  USE mdsys!, ONLY: natoms, mass, temp, ekin, vel
-  USE physconst
-  Implicit none
-  Integer :: I, J, K, N
-  Integer :: idum
-  Double Precision :: a,bby2,cby2,CMx,CMy,CMz
-  Double Precision :: Momentumx,Momentumy,Momentumz
-  Real(8) :: random, Ke0
-  Real gasdev
-
-
-   a = 5.7193d0
-   bby2 = 0.5d0*5.7193d0
-   cby2 = 0.5d0*5.7193d0
-   Box = Dble(NUnitCell)*a
-   Natoms = NUnitCell*NUnitCell*NUnitCell*4
-   Write(*,*)"No of atoms", Natoms
-   Write(*,*)"Box dimension",Box,"X",Box,"X",Box
-   N = 0
-   CMx = 0.d0
-   CMy = 0.d0
-   CMz = 0.d0
-   Do K = 1, 2*NUnitCell
-    Do J = 1, 2*NUnitCell
-     Do I = 1, NUnitCell
-       N = N + 1
-       If(mod(K,2).Eq.0) Then
-         If(MOD(J,2).Eq.0) Then
-           Pos(N,1) = (Dble(I) - 0.50d0)*a
-           Pos(N,2) = (Dble(J) - 1.0d0)*bby2
-           Pos(N,3) = (Dble(K) - 1.0d0)*cby2
-         Else
-           Pos(N,1) = (Dble(I) - 1.0d0)*a
-           Pos(N,2) = (Dble(J) - 1.0d0)*bby2
-           Pos(N,3) = (Dble(K) - 1.0d0)*cby2
-         EndIf
-       Else
-         If(mod(J,2).Eq.0) Then
-           Pos(N,1) = (Dble(I) - 1.0d0)*a
-           Pos(N,2) = (Dble(J) - 1.0d0)*bby2
-           Pos(N,3) = (Dble(K) - 1.0d0)*cby2
-         Else
-           Pos(N,1) = (Dble(I) - 0.50d0)*a
-           Pos(N,2) = (Dble(J) - 1.0d0)*bby2
-           Pos(N,3) = (Dble(K) - 1.0d0)*cby2
-         EndIf
-       EndIf
-       CMx = CMx + Pos(N,1)
-       CMy = CMy + Pos(N,2)
-       CMz = CMz + Pos(N,3)
-     Enddo
-     Write(10,*)
-    Enddo
-    Write(10,*)
-   Enddo
-   Write(*,*)"No of atoms", N
-   CMx = CMx/dble(N)
-   CMy = CMy/dble(N)
-   CMz = CMz/dble(N)
-
-!   Shift the centre of the box(cubic) to zero   !
-
-   Do I = 1, N
-     Pos(I,1) = Pos(I,1) - CMx
-     Pos(I,2) = Pos(I,2) - CMy
-     Pos(I,3) = Pos(I,3) - CMz
-   Enddo
-   Write(*,*)"Positions are written"
-
-        MomentumX = 0.d0
-        MomentumY = 0.d0
-        MomentumZ = 0.d0
-        Ke0 = 0.d0
-        Do I = 1,N
-          idum = 6543986 + i
-          Vel(I,1) = Dble(gasdev(idum))*0.001d0
-          Vel(I,2) = Dble(gasdev(idum))*0.001d0
-          Vel(I,3) = Dble(gasdev(idum))*0.001d0
-          MomentumX = MomentumX + Vel(I,1)
-          MomentumY = MomentumY + Vel(I,2)
-          MomentumZ = MomentumY + Vel(I,3)
-        Enddo
- 
-        MomentumX = MomentumX/Dble(N)
-        MomentumY = MomentumY/Dble(N)
-        MomentumZ = MomentumZ/Dble(N)
-
-      Write (6,*)
-      Write (6,*) 'Initial Momentum X-Dir.       : ',MomentumX
-      Write (6,*) 'Initial Momentum Y-Dir.       : ',MomentumY
-      Write (6,*) 'Initial Momentum Y-Dir.       : ',MomentumZ
-      Write (6,*)
-
-      Do I = 1,N
-         Vel(I,1) = Vel(I,1) - MomentumX
-         Vel(I,2) = Vel(I,2) - MomentumY
-         Vel(I,3) = Vel(I,3) - MomentumZ
-      Ke0 = Ke0 + 0.5d0*mvsq2e*mass*dot_product(vel(i,:),vel(i,:))!0.50d0*(Vel(I,1)**2+Vel(I,2)**2+Vel(I,3)**2)
-      Enddo
-      Write(*,*)"Initial Ke", Ke0
-END subroutine fcc
-
-!c     gasdev.for/     783165689   105   101   100666  549       `
-   FUNCTION gasdev(idum)
-      INTEGER :: idum
-      REAL :: gasdev
-!CU    USES ran3
-      INTEGER :: iset
-      REAL :: fac,gset,rsq,v1,v2,ran3
-      SAVE iset,gset
-      DATA iset/0/
-      if (iset.eq.0) then
-1       v1=2.*ran3(idum)-1.
-        v2=2.*ran3(idum)-1.
-        rsq=v1**2+v2**2
-        if(rsq.ge.1..or.rsq.eq.0.)goto 1
-        fac=sqrt(-2.*log(rsq)/rsq)
-        gset=v1*fac
-        gasdev=v2*fac
-        iset=1
-      else
-        gasdev=gset
-        iset=0
-      endif
-  END FUNCTION gasdev
-
-
-!cran3.for/       783165735   105   101   100666  1180      `
-    FUNCTION ran3(idum)
-        INTEGER :: idum
-!        INTEGER :: MBIG,MSEED,MZ
-!C       REAL MBIG,MSEED,MZ
-        REAL :: ran3
-        INTEGER, PARAMETER :: MBIG=1000000000,MSEED=161803398,MZ=0
-        REAL, PARAMETER :: FAC=1.0/MBIG
-!C       PARAMETER (MBIG=4000000.,MSEED=1618033.,MZ=0.,FAC=1./MBIG)
-        INTEGER :: i,iff,ii,inext,inextp,k
-        INTEGER :: mj,mk,ma(55)
-!C       REAL mj,mk,ma(55)
-        SAVE iff,inext,inextp,ma
-        DATA iff /0/
-        if(idum.lt.0.or.iff.eq.0)then
-          iff=1
-          mj=MSEED-iabs(idum)
-          mj=mod(mj,MBIG)
-          ma(55)=mj
-          mk=1
-          do 11 i=1,54
-            ii=mod(21*i,55)
-            ma(ii)=mk
-            mk=mj-mk
-            if(mk.lt.MZ)mk=mk+MBIG
-            mj=ma(ii)
-11        continue
-          do 13 k=1,4
-          do 12 i=1,55
-              ma(i)=ma(i)-ma(1+mod(i+30,55))
-              if(ma(i).lt.MZ)ma(i)=ma(i)+MBIG
-12          continue
-13          continue
-          inext=0
-          inextp=31
-          idum=1
-        endif
-        inext=inext+1
-        if(inext.eq.56)inext=1
-        inextp=inextp+1
-        if(inextp.eq.56)inextp=1
-        mj=ma(inext)-ma(inextp)
-        if(mj.lt.MZ)mj=mj+MBIG
-        ma(inext)=mj
-        ran3=mj*FAC
-  END FUNCTION ran3
-
- ! Velocity scaling added by H.-L. T. LE 
-SUBROUTINE velrescale
-!USE mdsys
-  USE kinds
-  USE mdsys
-  USE physconst
-
-  REAL(kind=dbl):: delta_temp, lambda
- 
-  CALL velverlet
-  CALL getekin
-  delta_temp = abs(temp - temp_int)
-
-  if (delta_temp .GT. 10.0_dbl) then
-      lambda = sqrt(temp_int/temp)
-  else
-      lambda = 1.0_dbl
-  endif
- 
-  vel(:,:) = lambda*vel(:,:)
-
-END SUBROUTINE velrescale
 
 PROGRAM LJMD
   USE kinds
@@ -729,8 +525,7 @@ PROGRAM LJMD
   
   INTEGER :: nprint, i, j
   INTEGER, EXTERNAL :: omp_get_num_threads
-  REAL(kind=dbl) :: boxby2
-  CHARACTER(len=sln) :: restfile, trajfile, ergfile,inpfile
+  CHARACTER(len=sln) :: restfile, trajfile, ergfile
 
   nthreads = 1
   !$OMP parallel shared(nthreads)
@@ -740,56 +535,36 @@ PROGRAM LJMD
   !$OMP end master
   !$OMP end parallel
 
-   Open(11, file = "fcc.dat", status = "Unknown")
-   Open(12, file = "ini-velocity.dat", status = "Unknown")
-
-!  CALL getline(stdin,inpfile)
-  READ(stdin,*) NUnitCell!natoms
+  READ(stdin,*) natoms
   READ(stdin,*) mass
-  READ(stdin,*) npot  
+  READ(stdin,*) npot
   READ(stdin,*) epsilon
   READ(stdin,*) sigma
-  READ(stdin,*) rcut
-!  READ(stdin,*) box
-!  CALL getline(stdin,restfile)
+  READ(stdin,*) rcut   
   READ(stdin,*) re
   READ(stdin,*) de
   READ(stdin,*) alpha
+  READ(stdin,*) box
+  CALL getline(stdin,restfile)
   CALL getline(stdin,trajfile)
   CALL getline(stdin,ergfile)
   READ(stdin,*) nsteps
   READ(stdin,*) dt
   READ(stdin,*) nprint
-  READ(stdin,*) thermostat                             ! modified by H.-L. T. LE  
-  if (thermostat.eq.1) READ(stdin,*) temp_int          ! modified by H.-L. T. LE  
-
-  write(*,*)"thermostat,tmp_int", thermostat, temp_int
-  boxby2=0.5_dbl*box
-  Maxatoms = 4*NUnitCell*NUnitCell*NUnitCell  
-
+  
   ! allocate storage for simulation data.
-  ALLOCATE(pos(Maxatoms,3),vel(Maxatoms,3),frc(Maxatoms,3,nthreads))
+  ALLOCATE(pos(natoms,3),vel(natoms,3),frc(natoms,3,nthreads))
 
-! generate initial data
-   Call fcc
-   Do i = 1, natoms
-     Write(11,*) Pos(I,1), Pos(I,2), Pos(I,3)
-   Enddo
-   Do i = 1, natoms
-     Write(12,*) Vel(I,1), Vel(I,2), Vel(I,3)
-   Enddo
-   Close(11)
-   Close(12)
 
   ! read restart 
-!  OPEN(UNIT=33, FILE=restfile, FORM='FORMATTED', STATUS='OLD')
-!  DO i=1,natoms
-!     READ(33,*) (pos(i,j),j=1,3)
-!  END DO
-!  DO i=1,natoms
-!     READ(33,*) (vel(i,j),j=1,3)
-!  END DO
-!  CLOSE(33)
+  OPEN(UNIT=33, FILE=restfile, FORM='FORMATTED', STATUS='OLD')
+  DO i=1,natoms
+     READ(33,*) (pos(i,j),j=1,3)
+  END DO
+  DO i=1,natoms
+     READ(33,*) (vel(i,j),j=1,3)
+  END DO
+  CLOSE(33)
 
   ! set up cell list
   CALL mkcell
@@ -798,9 +573,10 @@ PROGRAM LJMD
   ! initialize forces and energies
   nfi=0
   frc(:,:,:) = 0.0_dbl
+  
   CALL force
   CALL getekin
-  Write(*,*)"Initial Kin energy", ekin
+    
   CALL ioopen(ergfile, trajfile)
 
   WRITE(stdout, *) 'Starting simulation with ', natoms, ' atoms for', nsteps, ' steps'
@@ -817,9 +593,8 @@ PROGRAM LJMD
 
      ! propagate system and recompute energies
      CALL updcell
-    if (thermostat.eq.0) CALL velverlet !modified by H.-L. T. LE
-    if (thermostat.eq.1) CALL velrescale !modified by H.-L. T. LE 
-    CALL getekin
+     CALL velverlet
+     CALL getekin
   END DO
 
   ! clean up: close files, free memory
